@@ -1,5 +1,6 @@
---- a/src/amd/vulkan/radv_physical_device.c	2026-10-01 23:39:53.000000000 +0900
-+++ b/src/amd/vulkan/radv_physical_device.c	2026-10-13 17:48:02.991202611 +0900
+diff -ru a/src/amd/vulkan/radv_physical_device.c b/src/amd/vulkan/radv_physical_device.c
+--- a/src/amd/vulkan/radv_physical_device.c	2026-10-13 23:52:15.377504066 +0900
++++ b/src/amd/vulkan/radv_physical_device.c	2026-10-13 23:52:15.383342932 +0900
 @@ -2985,7 +2985,7 @@
              VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT | VK_QUEUE_SPARSE_BINDING_BIT;
           *pQueueFamilyProperties[idx] = (VkQueueFamilyProperties){
@@ -9,3 +10,33 @@
              .timestampValidBits = 64,
              .minImageTransferGranularity = (VkExtent3D){1, 1, 1},
           };
+diff -ru a/src/amd/vulkan/radv_queue.c b/src/amd/vulkan/radv_queue.c
+--- a/src/amd/vulkan/radv_queue.c	2026-10-13 23:52:15.378180007 +0900
++++ b/src/amd/vulkan/radv_queue.c	2026-10-13 23:52:15.386659532 +0900
+@@ -215,7 +215,7 @@
+    struct radeon_winsys_ctx *ctx = queue->hw_ctx;
+    struct radv_winsys_submit_info submit = {
+       .ip_type = radv_queue_ring(queue),
+-      .queue_index = queue->vk.index_in_family,
++      .queue_index = queue->state.qf == RADV_QUEUE_GENERAL ? 0 : queue->vk.index_in_family, /* gbos: only one GFX ring */
+       .secure = submission->is_protected,
+    };
+ 
+@@ -1752,7 +1752,7 @@
+ 
+    struct radv_winsys_submit_info submit = {
+       .ip_type = radv_queue_ring(queue),
+-      .queue_index = queue->vk.index_in_family,
++      .queue_index = queue->state.qf == RADV_QUEUE_GENERAL ? 0 : queue->vk.index_in_family, /* gbos: only one GFX ring */
+       .cs_array = cs_array,
+       .cs_count = 0,
+       .initial_preamble_count = num_1q_initial_preambles,
+@@ -1943,7 +1943,7 @@
+    struct radeon_winsys_ctx *ctx = queue->hw_ctx;
+    struct radv_winsys_submit_info submit = {
+       .ip_type = radv_queue_ring(queue),
+-      .queue_index = queue->vk.index_in_family,
++      .queue_index = queue->state.qf == RADV_QUEUE_GENERAL ? 0 : queue->vk.index_in_family, /* gbos: only one GFX ring */
+       .cs_array = &cs,
+       .cs_count = 1,
+    };

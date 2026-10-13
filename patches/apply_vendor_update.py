@@ -187,6 +187,22 @@ def main():
                 b'on property:sys.boot_completed=1\n'
                 b'    start gbos-battery-percent\n'), 'vendor_configs_file')
 
+        # 2c5. Bare metal audio: the vendor blocklists snd_hda_intel (its Intel boards use SOF), so load the HD-Audio driver
+        # and the Realtek / ATI HDMI codec drivers explicitly. modprobe without -b ignores the blocklist.
+        if GFX_RADV:
+            add('etc/init/gbos-audio-modules.rc', (
+                b'service gbos-audio-modules /system/bin/sh -c "mkdir -p /metadata/gbos-log; '
+                b'(/system/bin/modprobe -v -a -d /vendor_dlkm/lib/modules snd-hda-intel snd-hda-codec-alc269 '
+                b'snd-hda-codec-atihdmi snd-hda-codec-hdmi snd-hda-codec-generic; echo modprobe-exit=\\$?; sleep 3; '
+                b'cat /proc/asound/cards; ls /dev/snd; ls /sys/class/sound; ls /vendor_dlkm/lib/modules | grep -c snd) > /metadata/gbos-log/audio.txt 2>&1"\n'
+                b'    class core\n'
+                b'    user root\n'
+                b'    seclabel u:r:shell:s0\n'
+                b'    oneshot\n'
+                b'    disabled\n\n'
+                b'on early-boot\n'
+                b'    start gbos-audio-modules\n'), 'vendor_configs_file')
+
         # 2c4. Bare metal: root adb over TCP (no USB gadget on a laptop). Connect with `adb connect <ip>:5555`.
         # The image is a "user" build, so debuggable/unauthenticated adb has to be forced from init.
         if GFX_RADV and os.environ.get('GBOS_ADB', 'on') != 'off':
@@ -205,8 +221,8 @@ def main():
             add('etc/init/gbos-persist-log.rc', (
                 b'# debug: keep logs on /metadata (unencrypted, small: ~64 MB) so they survive a black screen\n'
                 b'service gbos-persist-log /system/bin/sh -c "mkdir -p /metadata/gbos-log; '
-                b'logcat -b all -v threadtime -f /metadata/gbos-log/gb-logcat.txt -r 4096 -n 3 & '
-                b'(dmesg -w | grep --line-buffered -E \'amdgpu|drm|nvme|rtw|usb |wlan|reset|timeout|fault|BUG|WARN|Oops|panic|firmware|hung|lockup|thermal|ACPI Error\' | head -c 6000000 > /metadata/gbos-log/gb-kmsg.txt) & '
+                b'logcat -b all -v threadtime -f /metadata/gbos-log/gb-logcat.txt -r 4096 -n 3 \'*:W\' & '
+                b'(dmesg -w | grep --line-buffered -E \'amdgpu|drm|nvme|rtw|usb |wlan|snd|hda|codec|sound|reset|timeout|fault|BUG|WARN|Oops|panic|firmware|hung|lockup|thermal|ACPI Error\' | head -c 6000000 > /metadata/gbos-log/gb-kmsg.txt) & '
                 b'while true; do getprop > /metadata/gbos-log/gb-props.txt; sleep 30; done"\n'
                 b'    class core\n'
                 b'    user root\n'
@@ -402,6 +418,15 @@ def main():
             for fn in ('libminigbm_gralloc.so', 'libgbm.so'):
                 mm = erofs_metadata.metadata(src_fs, '/lib64/' + fn)
                 add('lib64/' + fn, (rt / fn).read_bytes(), _label(mm), mm['mode'] & 0o7777, mm['uid'], mm['gid'])
+            # Firmware that is loaded after the initrd is gone (kernel looks in /vendor/firmware via firmware_class.path):
+            # Realtek Bluetooth (USB 0bda:c123 = RTL8822C) and a copy of the Wi-Fi / GPU blobs for re-loads (resume).
+            for rel, src in (('firmware/rtl_bt/rtl8822cu_fw.bin', '/lib/firmware/rtl_bt/rtl8822cu_fw.bin'),
+                             ('firmware/rtl_bt/rtl8822cu_config.bin', '/lib/firmware/rtl_bt/rtl8761bu_config.bin'),
+                             ('firmware/rtw88/rtw8822c_fw.bin', '/lib/firmware/rtw88/rtw8822c_fw.bin')):
+                if os.path.exists(src):
+                    dirs.setdefault(os.path.dirname(rel), (0o755, 0, 0, 'vendor_file'))
+                    add(rel, Path(src).read_bytes(), 'vendor_file', 0o644, 0, 0)
+                    print('Added', rel)
             print("Added RADV runtime and patched minigbm (GBOS_GFX=radv)")
 
         # 5. Patched Mesa VirGL Libraries (GLES 3 context support)

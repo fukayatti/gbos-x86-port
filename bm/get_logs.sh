@@ -5,5 +5,5 @@ set -euo pipefail
 B=$(cd "$(dirname "$0")" && pwd); M=$(mktemp -d)
 e2fsck -fp /dev/nvme0n1p36 || true
 mount -o ro /dev/nvme0n1p36 "$M"
-rm -f "$B"/gb-*; cp "$M"/gbos-log/gb-* "$B"/; umount "$M"
-chown "${SUDO_USER:-root}": "$B"/gb-*; ls -l "$B"/gb-*
+rm -f "$B"/gb-*; cp "$M"/gbos-log/gb-* "$M"/gbos-log/audio.txt "$B"/ 2>/dev/null; umount "$M"
+chown "${SUDO_USER:-root}": "$B"/gb-* "$B"/audio.txt 2>/dev/null; ls -l "$B"/gb-*

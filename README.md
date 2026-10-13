@@ -5,9 +5,9 @@ requirements — a Ryzen 7 5700U (Zen 2) laptop — first in a KVM VM, then (wor
 Brunch-style: keep Google's system image, replace the kernel, initramfs and a few vendor bits.
 
 **Status (2026-10-13): it boots to the setup wizard and desktop on a real laptop** (Lenovo 82R9, Ryzen 7 5700U / Renoir, internal NVMe).
-Working: kernel, amdgpu, Android UI via ANGLE + Mesa **RADV** (software-free Vulkan), Wi-Fi (RTL8822CE via rtw88), real battery readout.
-Not done: audio, Bluetooth firmware path, suspend, special keys, fingerprint. Known problem: HWUI's second Vulkan queue sometimes returns
-`VK_ERROR_DEVICE_LOST` (launcher restarts, screen flicker) - under investigation. Graphics buffers are linear "dumb" buffers (slow).
+Working: kernel, amdgpu, Android UI via ANGLE + Mesa **RADV**, Wi-Fi (RTL8822CE via rtw88), Bluetooth, battery readout, brightness keys, lid suspend/resume.
+Not done: audio, fingerprint, OTA, hardware video decode. Graphics buffers are linear "dumb" buffers (works, not fast). YouTube quality is limited (Widevine L3, no TEE).
+Step-by-step: `docs/MANUAL.md`; symptom -> cause -> fix: `docs/TROUBLESHOOTING.md`.
 A KVM VM path also works (see `host/`). This is a collection of parts, not a one-command framework, and it **overwrites partitions**: read `bm/`
 before running anything there.
 
