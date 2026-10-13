@@ -1,0 +1,11 @@
+--- a/src/amd/vulkan/radv_physical_device.c	2026-10-01 23:39:53.000000000 +0900
++++ b/src/amd/vulkan/radv_physical_device.c	2026-10-13 17:48:02.991202611 +0900
+@@ -2985,7 +2985,7 @@
+             VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT | VK_QUEUE_SPARSE_BINDING_BIT;
+          *pQueueFamilyProperties[idx] = (VkQueueFamilyProperties){
+             .queueFlags = gfx_flags | radv_queue_family_protected_flag(pdev, RADV_QUEUE_GENERAL),
+-            .queueCount = 1,
++            .queueCount = 2, /* gbos: Android HWUI requires >= 2 graphics queues */
+             .timestampValidBits = 64,
+             .minImageTransferGranularity = (VkExtent3D){1, 1, 1},
+          };

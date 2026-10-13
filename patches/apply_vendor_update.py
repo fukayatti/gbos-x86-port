@@ -16,6 +16,23 @@ from make_lapis_security_port import (
 # not exist so apps see no Vulkan and use GLES. GBOS_VULKAN_DRIVER=on restores vulkan.virtio.so.
 VK_HW = 'virtio' if os.environ.get('GBOS_VULKAN_DRIVER') == 'on' else 'novulkan'
 
+# Bare metal on an AMD GPU (GBOS_GFX=radv): stock graphics stack (ANGLE on Vulkan) with Mesa RADV as the Vulkan
+# driver, and the dumb DRM backend of minigbm switched on for the amdgpu kernel driver. See radv-runtime/.
+GFX_RADV = os.environ.get('GBOS_GFX') == 'radv'
+if GFX_RADV:
+    VK_HW = 'radv'
+GFX_SWAPS = [(b'ro.hardware.egl virgl', b'ro.hardware.egl angle'), (b'persist.graphics.egl virgl', b'persist.graphics.egl angle'),
+             (b'ro.hwui.use_vulkan false', b'ro.hwui.use_vulkan true'),
+             (b'debug.renderengine.backend skiaglthreaded', b'debug.renderengine.backend skiavkthreaded'),
+             (b'debug.renderengine.vulkan false', b'debug.renderengine.vulkan true'),
+             (b'debug.hwui.renderer skiagl', b'debug.hwui.renderer skiavk'),
+             (b'ro.gfx.angle.supported false', b'ro.gfx.angle.supported true')]
+def gfx_fix(b):
+    if GFX_RADV:
+        for old, new in GFX_SWAPS:
+            b = b.replace(old, new)
+    return b
+
 def main():
     target = Path(LINUX_DIR) / 'image-security/googlebook-security.bin'
     super_base = 746586112 # 1458176 * 512
@@ -118,7 +135,7 @@ def main():
             b'on init\n'
             b'    restorecon_recursive /sys/devices/pci0000:00/0000:00:01.0\n'
         )
-        add('etc/init/vm-graphics.rc', VM_GRAPHICS_RC_CUSTOM, 'vendor_configs_file')
+        add('etc/init/vm-graphics.rc', gfx_fix(VM_GRAPHICS_RC_CUSTOM), 'vendor_configs_file')
 
         # 2b. Temporary debug: show INFO logs from zygote64/ART (-verbose:jni) on the serial console.
         if _exists(src_fs, 'etc/init/vm-diagnostic-log.rc'):
@@ -154,7 +171,51 @@ def main():
             b'on property:sys.boot_completed=1\n'
             b'    start vm-fake-battery\n'
         )
-        add('etc/init/vm-fake-battery.rc', VM_FAKE_BATTERY_RC, 'vendor_configs_file')
+        if not GFX_RADV:   # bare metal has a real battery (ACPI), do not fake it
+            add('etc/init/vm-fake-battery.rc', VM_FAKE_BATTERY_RC, 'vendor_configs_file')
+
+        # 2c3. Bare metal: show the battery percentage in the status bar (the real ACPI battery works through the
+        # health HAL, but the percentage is off by default).
+        if GFX_RADV:
+            add('etc/init/gbos-battery-percent.rc', (
+                b'service gbos-battery-percent /system/bin/sh -c "for i in 1 2 3 4 5 6; do cmd settings put system status_bar_show_battery_percent 1 && break; sleep 10; done"\n'
+                b'    class late_start\n'
+                b'    user root\n'
+                b'    seclabel u:r:shell:s0\n'
+                b'    oneshot\n'
+                b'    disabled\n\n'
+                b'on property:sys.boot_completed=1\n'
+                b'    start gbos-battery-percent\n'), 'vendor_configs_file')
+
+        # 2c4. Bare metal: root adb over TCP (no USB gadget on a laptop). Connect with `adb connect <ip>:5555`.
+        # The image is a "user" build, so debuggable/unauthenticated adb has to be forced from init.
+        if GFX_RADV and os.environ.get('GBOS_ADB', 'on') != 'off':
+            add('etc/init/gbos-adb.rc', (
+                b'on early-init\n'
+                b'    setprop ro.debuggable 1\n'
+                b'    setprop ro.adb.secure 0\n\n'
+                b'on property:sys.boot_completed=1\n'
+                b'    setprop service.adb.tcp.port 5555\n'
+                b'    stop adbd\n'
+                b'    start adbd\n'), 'vendor_configs_file')
+
+        # 2c2. Bare-metal debugging without a screen: persist logcat and dmesg under /data/local/tmp (unencrypted),
+        # readable afterwards from another OS. GBOS_PERSIST_LOG=off leaves it out.
+        if os.environ.get('GBOS_PERSIST_LOG', 'on') != 'off':
+            add('etc/init/gbos-persist-log.rc', (
+                b'# debug: keep logs on /metadata (unencrypted, small: ~64 MB) so they survive a black screen\n'
+                b'service gbos-persist-log /system/bin/sh -c "mkdir -p /metadata/gbos-log; '
+                b'logcat -b all -v threadtime -f /metadata/gbos-log/gb-logcat.txt -r 4096 -n 3 & '
+                b'(dmesg -w | grep --line-buffered -E \'amdgpu|drm|nvme|rtw|usb |wlan|reset|timeout|fault|BUG|WARN|Oops|panic|firmware|hung|lockup|thermal|ACPI Error\' | head -c 6000000 > /metadata/gbos-log/gb-kmsg.txt) & '
+                b'while true; do getprop > /metadata/gbos-log/gb-props.txt; sleep 30; done"\n'
+                b'    class core\n'
+                b'    user root\n'
+                b'    group root log system\n'
+                b'    seclabel u:r:shell:s0\n'
+                b'    disabled\n\n'
+                b'on post-fs-data\n'
+                b'    start gbos-persist-log\n'), 'vendor_configs_file')
+            print("Added gbos-persist-log")
 
         # 2d. Baseline rebuild of libz.so (see apply_system_update.py): the stock one traps on AVX-VNNI.
         libz_new = WORK / 'zlib-build/out/libz.so'
@@ -169,7 +230,7 @@ def main():
         # vn_ring_submit_locked). Un-declare the Vulkan features so Chrome falls back to GLES (virgl).
         # GBOS_VULKAN_FEATURES=on restores the original declarations.
         orig_perm_dir = WORK / 'orig-vulkan-permissions'
-        vk_mode = os.environ.get('GBOS_VULKAN_FEATURES', 'off')
+        vk_mode = os.environ.get('GBOS_VULKAN_FEATURES', 'on' if GFX_RADV else 'off')
         for vk_xml in ('android.hardware.vulkan.level.xml', 'android.hardware.vulkan.version.xml',
                        'android.hardware.vulkan.compute.xml', 'android.software.vulkan.deqp.level.xml'):
             rel = 'etc/permissions/' + vk_xml
@@ -266,7 +327,7 @@ def main():
                 b'    setprop debug.ld.all dlerror,dlopen\n\n'
             )
             rc_m = erofs_metadata.metadata(src_fs, '/etc/init/hw/init.android-desktop.rc')
-            add('etc/init/hw/init.android-desktop.rc', prefix + orig_rc, _label(rc_m), rc_m['mode'] & 0o7777, rc_m['uid'], rc_m['gid'])
+            add('etc/init/hw/init.android-desktop.rc', gfx_fix(prefix) + orig_rc, _label(rc_m), rc_m['mode'] & 0o7777, rc_m['uid'], rc_m['gid'])
 
         # 3.5 build.prop
         orig_prop = dump_cat(src_fs, '/build.prop').decode()
@@ -298,6 +359,10 @@ def main():
             'dalvik.vm.extra-opts': '-Xgc:CMC',
             'ro.zygote.disable_gl_preload': 'true',
         }
+        if GFX_RADV:
+            for k, v in (('ro.hardware.egl', 'angle'), ('ro.hwui.use_vulkan', 'true'), ('debug.renderengine.backend', 'skiavkthreaded'),
+                         ('debug.renderengine.vulkan', 'true'), ('debug.hwui.renderer', 'skiavk'), ('ro.gfx.angle.supported', 'true')):
+                prop_overrides[k] = v
         FORBIDDEN_PROPS = {
             'ro.vendor.boot_security_patch',
             'LIBGL_DEBUG',
@@ -328,6 +393,16 @@ def main():
             if _exists(src_fs, path):
                 mm = erofs_metadata.metadata(src_fs, '/' + path)
                 add(path, data, _label(mm), mm['mode'] & 0o7777, mm['uid'], mm['gid'])
+
+        # 4b. AMD bare metal: RADV + libdrm_amdgpu, and minigbm (gralloc/gbm) with its dumb backend enabled for "amdgpu"
+        if GFX_RADV:
+            rt = WORK / 'radv-runtime'
+            for rel, fn in (('lib64/hw/vulkan.radv.so', 'vulkan.radv.so'), ('lib64/libdrm_amdgpu.so', 'libdrm_amdgpu.so')):
+                add(rel, (rt / fn).read_bytes(), 'same_process_hal_file', 0o644, 0, 0)
+            for fn in ('libminigbm_gralloc.so', 'libgbm.so'):
+                mm = erofs_metadata.metadata(src_fs, '/lib64/' + fn)
+                add('lib64/' + fn, (rt / fn).read_bytes(), _label(mm), mm['mode'] & 0o7777, mm['uid'], mm['gid'])
+            print("Added RADV runtime and patched minigbm (GBOS_GFX=radv)")
 
         # 5. Patched Mesa VirGL Libraries (GLES 3 context support)
         work_dir = WORK

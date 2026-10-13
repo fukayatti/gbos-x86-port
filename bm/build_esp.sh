@@ -6,7 +6,7 @@ KERNEL=${KERNEL:-$HOME/src/kernel/out/arch/x86/boot/bzImage}
 INITRD=${INITRD:-$B/initrd.bm}
 # boot_devices = the two xHCI controllers of this laptop (Lenovo 82R9); any USB port on them works.
 BD="${BD:-pci0000:00/0000:00:08.1/0000:04:00.3,pci0000:00/0000:00:08.1/0000:04:00.4}"
-BASE="panic=0 root=/dev/ram0 loglevel=7 earlycon=efifb keep_bootcon cgroup_disable=pressure firmware_class.path=/lib/firmware \
+BASE="panic=30 root=/dev/ram0 loglevel=7 log_buf_len=8M cgroup_disable=pressure firmware_class.path=/lib/firmware \
 binder.impl=rust ia32_emulation=false vsyscall=none printk.devkmsg=on \
 androidboot.hardware=android-desktop androidboot.hardware.platform=android-desktop androidboot.slot_suffix=_a \
 androidboot.boot_devices=$BD androidboot.vbmeta.size=6720 androidboot.vbmeta.hash_alg=sha256 \

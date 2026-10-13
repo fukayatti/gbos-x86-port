@@ -1,0 +1,14 @@
+diff --git a/kernel/module/main.c b/kernel/module/main.c
+index 8a368767b..4e809095d 100644
+--- a/kernel/module/main.c
++++ b/kernel/module/main.c
+@@ -1274,7 +1274,8 @@ static const struct kernel_symbol *resolve_symbol(struct module *mod,
+ 	}
+ 
+ #ifdef CONFIG_MODULE_SIG
+-	if (fsa.is_protected && !mod->sig_ok) {
++	/* gbos: shipped modules are signed with a key we do not have */
++	if (0 && fsa.is_protected && !mod->sig_ok) {
+ 		pr_warn("%s: Cannot use protected symbol %s\n",
+ 			mod->name, name);
+ 		fsa.sym = ERR_PTR(-EACCES);

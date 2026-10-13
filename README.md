@@ -4,10 +4,12 @@ Running **Googlebook OS (Android 17, x86_64 "lapis" build)** on a PC that does n
 requirements — a Ryzen 7 5700U (Zen 2) laptop — first in a KVM VM, then (work in progress) from an external USB SSD.
 Brunch-style: keep Google's system image, replace the kernel, initramfs and a few vendor bits.
 
-**Status (2026-10-13):** VM on KVM boots to the desktop; Chrome renders; `/data` persists; pointer, scroll and Gboard work.
-A self-built kernel boots the shipped image in QEMU, including the OVMF → GRUB → USB path.
-**Bare metal is untested** (no screen yet is the expected failure mode: the kernel has no fbcon; see `docs/`).
-This is a collection of parts, not a one-command framework.
+**Status (2026-10-13): it boots to the setup wizard and desktop on a real laptop** (Lenovo 82R9, Ryzen 7 5700U / Renoir, internal NVMe).
+Working: kernel, amdgpu, Android UI via ANGLE + Mesa **RADV** (software-free Vulkan), Wi-Fi (RTL8822CE via rtw88), real battery readout.
+Not done: audio, Bluetooth firmware path, suspend, special keys, fingerprint. Known problem: HWUI's second Vulkan queue sometimes returns
+`VK_ERROR_DEVICE_LOST` (launcher restarts, screen flicker) - under investigation. Graphics buffers are linear "dumb" buffers (slow).
+A KVM VM path also works (see `host/`). This is a collection of parts, not a one-command framework, and it **overwrites partitions**: read `bm/`
+before running anything there.
 
 ## What is here
 | Dir | What |
@@ -16,7 +18,8 @@ This is a collection of parts, not a one-command framework.
 | `pointer-bridge/` | In-guest helper: reads QEMU's usb-tablet and re-emits a pen-style absolute pointer plus a wheel mouse via uinput (exact clicks at any aspect ratio, working scroll). |
 | `kernel/` | `kmake.sh` (reproducible build env), shipped kernel config (extracted from the image). Config deltas and the CRC pitfalls are in `docs/`. |
 | `patches/` | `apply_system_update.py`, `apply_vendor_update.py` (incremental erofs overlay edits: native bridge off, fake battery, Vulkan hidden, libz, pointer bridge) and `build_libz.sh` (baseline-CPU zlib). |
-| `bm/` | `make_baremetal_initrd.sh` (adds amdgpu + firmware), `build_esp.sh` (GRUB ESP), `test_uefi_usb.sh` (QEMU test of the USB boot path), `flash_usb.sh` (**destructive**, USB disks only, asks for `YES`). |
+| `bm/` | `make_baremetal_initrd.sh` (adds amdgpu, rtw88, firmware), `build_esp.sh` (GRUB ESP), `test_uefi_usb.sh` (QEMU test of the boot path), `flash_usb.sh` (**destructive**, USB disks only), `install_nvme_p3.sh` / `rewrite_images.sh` / `write_esp.sh` (**destructive**, written for one specific laptop's partition layout; read and adapt), `get_logs.sh` (reads logcat that `gbos-persist-log` keeps on /metadata), `fix_boot.sh`. |
+| `mesa-radv/` | Build script + patch for Mesa RADV on Android x86_64 (needs the NDK and Mesa 26.2.4 with the mapper5 patch from skylartaylor/gbos-vm). |
 | `host/` | Launchers with host protection (cgroup limits, health logger), `vnc.py` headless driver. |
 | `docs/` | Status notes and the SIGILL investigation. |
 
@@ -28,11 +31,20 @@ The `apply_*.py` scripts import helpers (`lp_tools`, `erofs_metadata`, `make_lap
 yourself and set `GBOS_LINUX_DIR`. Scratch data lives under `GBOS_WORK` (default `~/gbos-x86-work`).
 Paths in `bm/`, `host/` and `kernel/` still assume my layout (`~/src/...`); adjust before use.
 
+## Bare-metal recipe (what worked)
+1. Build the kernel (`kernel/`), then `bm/make_baremetal_initrd.sh` (amdgpu + rtw88 and their firmware go into the initrd).
+2. `mesa-radv/build.sh`, then `patches/make_radv_runtime.sh`; `GBOS_GFX=radv python3 patches/apply_vendor_update.py`.
+3. Lay the image's GPT partitions out on a disk (see `bm/install_nvme_p3.sh`), write them **without `conv=sparse`** (stale data in the holes broke erofs),
+   `bm/build_esp.sh` -> ESP with GRUB + kernel + initrd.
+Gotchas found on the way: `androidboot.boot_devices` must be the PCI *bridge* path above the NVMe/xHCI, not the device itself; `/data/local` is
+file-name encrypted so logs must go to unencrypted /metadata; minigbm has no amdgpu backend, but its dumb backend works once renamed
+(`radeon` -> `amdgpu`); HWUI needs >= 2 graphics queues, RADV reports 1 (see `mesa-radv/`).
+
 ## Kernel notes
 Source: AOSP `kernel/common` tag `android17-6.18-2026-06_r52`, LLVM=1, `KBUILD_GENDWARFKSYMS_STABLE=1` (otherwise 400+ module CRC mismatches),
 `LOCALVERSION` set to match the shipped release string. Shipped modules are signed with Google's key, so
-`kernel/module/main.c` ("Cannot use protected symbol") is patched out: `if (0 && fsa.is_protected && !mod->sig_ok)`.
-Added: amdgpu (+DC), I2C_HID_ACPI, PINCTRL_AMD, ACPI battery/AC. Wi-Fi, audio, EC are not done.
+`kernel/module/main.c` ("Cannot use protected symbol") is patched out, see `kernel/patches/`. `kernel/check_crc.py` compares every shipped module's symbol CRCs with your `Module.symvers` (0 mismatches over ~500 modules).
+Added: amdgpu (+DC), I2C_HID_ACPI, PINCTRL_AMD, ACPI battery/AC, cfg80211/mac80211/rtw88 (8822CE). Audio and EC are not done.
 
 ## Safety
 VMs froze my host once (cause unknown), so the launchers use a memory/CPU cgroup and keep ≥6 GB free. Never run the flash script on an internal disk.

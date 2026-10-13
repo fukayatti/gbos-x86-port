@@ -1,0 +1,18 @@
+[constants]
+ndk = '@NDK@'
+[binaries]
+c = ndk / 'bin/x86_64-linux-android34-clang'
+cpp = [ndk / 'bin/x86_64-linux-android34-clang++', '-fno-exceptions', '-fno-unwind-tables', '-fno-asynchronous-unwind-tables', '--start-no-unused-arguments', '-static-libstdc++', '--end-no-unused-arguments']
+ar = ndk / 'bin/llvm-ar'
+strip = ndk / 'bin/llvm-strip'
+c_ld = 'lld'
+cpp_ld = 'lld'
+pkg-config = '@PKGCONFIG@'
+[host_machine]
+system = 'android'
+cpu_family = 'x86_64'
+cpu = 'x86_64'
+endian = 'little'
+[properties]
+needs_exe_wrapper = true
+pkg_config_libdir = ''
