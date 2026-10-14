@@ -1,0 +1,25 @@
+<?xml version='1.0' encoding='utf-8'?>
+<audio_config>
+	<!-- Lenovo IdeaPad (Ryzen 5000 "Renoir/Cezanne" HD Audio, Realtek ALC257). Card ids are pinned on the kernel command line: snd_hda_intel.id=HDMIAMD,Analog -->
+	<SoundCardName>hw:Analog</SoundCardName>
+	<HiFi>
+		<Speaker>
+			<PlaybackPCM>hw:Analog,0</PlaybackPCM>
+		</Speaker>
+		<Headphone>
+			<PlaybackPCM>hw:Analog,0</PlaybackPCM>
+			<JackDev>HD-Audio Generic Headphone</JackDev>
+			<JackSwitch>2</JackSwitch>
+		</Headphone>
+		<InternalMic>
+			<CapturePCM>hw:Analog,0</CapturePCM>
+			<IntrinsicSensitivity>-2600</IntrinsicSensitivity>
+			<RampUpMs>100</RampUpMs>
+		</InternalMic>
+		<Mic>
+			<CapturePCM>hw:Analog,0</CapturePCM>
+			<CaptureMixerElem>Headset Mic</CaptureMixerElem>
+			<JackDev>HD-Audio Generic Headset Mic</JackDev>
+		</Mic>
+	</HiFi>
+</audio_config>

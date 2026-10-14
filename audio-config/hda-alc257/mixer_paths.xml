@@ -1,0 +1,25 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mixer>
+	<ctl name="Auto-Mute Mode" value="Disabled" />
+	<ctl name="Master Playback Switch" value="1" />
+	<ctl name="Master Playback Volume" value="87" />
+	<ctl name="PCM Playback Volume" value="255 255" />
+	<ctl name="Speaker Playback Volume" value="87 87" />
+	<ctl name="Headphone Playback Volume" value="87 87" />
+	<ctl name="Speaker Playback Switch" value="0 0" />
+	<ctl name="Headphone Playback Switch" value="0 0" />
+	<ctl name="Capture Switch" value="1 1" />
+	<ctl name="Capture Volume" value="40 40" />
+	<path name="Speaker">
+		<ctl name="Speaker Playback Switch" value="1 1" />
+	</path>
+	<path name="Headphone">
+		<ctl name="Headphone Playback Switch" value="1 1" />
+	</path>
+	<path name="InternalMic">
+		<ctl name="Internal Mic Boost Volume" value="2 2" />
+	</path>
+	<path name="Mic">
+		<ctl name="Headset Mic Boost Volume" value="3 3" />
+	</path>
+</mixer>

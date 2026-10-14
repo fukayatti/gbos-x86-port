@@ -40,5 +40,5 @@ the NVMe/xHCI controller (`pci0000:00/0000:00:02.4`), not the device itself, or 
 * Dual booting means you cannot `adb` from the other OS; a second machine can use the root adb over TCP (`GBOS_ADB`).
 
 ## 6. Status
-Works: boot, desktop, Chrome, Wi-Fi, Bluetooth (Realtek firmware in /vendor/firmware), battery, brightness keys, lid suspend/resume.
-Not yet: audio (the HAL cannot find its "internal card"), YouTube quality (Widevine L3 without a TEE?), fingerprint, OTA.
+Works: boot, desktop, Chrome, Wi-Fi, Bluetooth (own btusb/btrtl with a NULL-return fix, loaded from the initrd), audio (analog), battery, brightness keys, lid suspend/resume.
+Not yet: HDMI audio, fingerprint, OTA, hardware video decode, YouTube quality (Widevine L3 without a TEE).

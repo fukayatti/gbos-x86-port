@@ -9,7 +9,7 @@ mkdir -p "$(dirname "$OUT")"; cd "$W"
 (lz4 -dc "$SRC" 2>/dev/null || zcat "$SRC") | cpio -id --quiet
 L=lib/modules
 # Top-level modules to add; dependencies are resolved from our modules.dep (ours replace the vendor ones of the same name)
-python3 - "$M" "$L" amdgpu rtw88_8822ce <<'PY'
+python3 - "$M" "$L" amdgpu rtw88_8822ce btusb <<'PY'
 import sys, os
 M, L = sys.argv[1], sys.argv[2]; tops = sys.argv[3:]
 dep = {}
@@ -35,5 +35,6 @@ PY
 mkdir -p lib/firmware/amdgpu
 for n in renoir green_sardine; do cp /lib/firmware/amdgpu/${n}_*.bin lib/firmware/amdgpu/; done
 mkdir -p lib/firmware/rtw88; cp /lib/firmware/rtw88/rtw8822c_*.bin lib/firmware/rtw88/
+mkdir -p lib/firmware/rtl_bt; cp /lib/firmware/rtl_bt/rtl8822cu_fw.bin lib/firmware/rtl_bt/; cp -L /lib/firmware/rtl_bt/rtl8822cu_config.bin lib/firmware/rtl_bt/
 find . | cpio -o -H newc --quiet | gzip -9 > "$OUT"
 ls -l "$OUT"

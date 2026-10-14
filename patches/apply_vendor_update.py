@@ -26,7 +26,8 @@ GFX_SWAPS = [(b'ro.hardware.egl virgl', b'ro.hardware.egl angle'), (b'persist.gr
              (b'debug.renderengine.backend skiaglthreaded', b'debug.renderengine.backend skiavkthreaded'),
              (b'debug.renderengine.vulkan false', b'debug.renderengine.vulkan true'),
              (b'debug.hwui.renderer skiagl', b'debug.hwui.renderer skiavk'),
-             (b'ro.gfx.angle.supported false', b'ro.gfx.angle.supported true')]
+             (b'ro.gfx.angle.supported false', b'ro.gfx.angle.supported true'),
+             (b'    setprop debug.ld.all dlerror,dlopen\n', b'')]
 def gfx_fix(b):
     if GFX_RADV:
         for old, new in GFX_SWAPS:
@@ -193,15 +194,48 @@ def main():
             add('etc/init/gbos-audio-modules.rc', (
                 b'service gbos-audio-modules /system/bin/sh -c "mkdir -p /metadata/gbos-log; '
                 b'(/system/bin/modprobe -v -a -d /vendor_dlkm/lib/modules snd-hda-intel snd-hda-codec-alc269 '
-                b'snd-hda-codec-atihdmi snd-hda-codec-hdmi snd-hda-codec-generic; echo modprobe-exit=\\$?; sleep 3; '
-                b'cat /proc/asound/cards; ls /dev/snd; ls /sys/class/sound; ls /vendor_dlkm/lib/modules | grep -c snd) > /metadata/gbos-log/audio.txt 2>&1"\n'
+                b'snd-hda-codec-generic; echo modprobe-exit=$$?; sleep 3; '
+                b'cat /proc/asound/cards; ls /dev/snd; ls /sys/class/sound; echo == dras-help; /apex/com.android.hardware.audio.desktop/bin/hw/dras.core.audio --help 2>&1 | head -60; '
+                b'echo == props; getprop ro.product.device; getprop vendor.device.sku.id; ls /vendor/etc/audio; for c in /proc/asound/card*; do echo $$c; cat $$c/id; done) > /metadata/gbos-log/audio.txt 2>&1"\n'
+                b'    class core\n'
+                b'    user root\n'
+                b'    seclabel u:r:shell:s0\n'
+                b'    oneshot\n'
+                b'    disabled\n\n'
+                b'on early-init\n'
+                b'    start gbos-audio-modules\n'), 'vendor_configs_file')
+
+        # 2c6. Bare metal Bluetooth: make sure the USB Bluetooth driver stack is loaded and leave a diagnostic file.
+        if GFX_RADV:
+            add('etc/init/gbos-bt-modules.rc', (
+                b'service gbos-bt-modules /system/bin/sh -c "mkdir -p /metadata/gbos-log; '
+                b'(/system/bin/modprobe -v -a -d /system_dlkm/lib/modules bluetooth; /system/bin/modprobe -v -a -d /vendor_dlkm/lib/modules btusb; '
+                b'echo modprobe-exit=$$?; sleep 15; dmesg | grep -iE \'blue|hci|btusb|btrtl|rtl8822|rtl_bt|firmware\' | tail -40; '
+                b'ls -la /sys/class/bluetooth; lsmod | grep -E \'^(bt|blue|hci|rfkill)\'; echo == protocols; grep -iE \'HCI|L2CAP|RFCOMM|SCO|BT\' /proc/net/protocols; '
+                b'echo == hcitool; /vendor/bin/hw/hcitool.android-desktop dev; echo hcitool-exit=$$?; echo == dev; ls -l /dev/rfkill /dev/vhci) > /metadata/gbos-log/bt.txt 2>&1"\n'
                 b'    class core\n'
                 b'    user root\n'
                 b'    seclabel u:r:shell:s0\n'
                 b'    oneshot\n'
                 b'    disabled\n\n'
                 b'on early-boot\n'
-                b'    start gbos-audio-modules\n'), 'vendor_configs_file')
+                b'    start gbos-bt-modules\n'), 'vendor_configs_file')
+
+        # 2c7. Bare metal audio config for the AMD HD-Audio codec (ALC257). The audio HAL (dras) learns its card from
+        # /vendor/etc/data/hal_configs/audio_*.xml, which only knows Intel SOF boards; point it at our own config dir.
+        if GFX_RADV:
+            ac = Path(__file__).resolve().parent.parent / 'audio-config' / 'hda-alc257'
+            dirs.setdefault('etc/audio/hda-alc257', (0o755, 0, 0, 'vendor_configs_file'))
+            for fn in ('audio_config.xml', 'mixer_paths.xml', 'volume_curves.xml'):
+                add('etc/audio/hda-alc257/' + fn, (ac / fn).read_bytes(), 'vendor_configs_file', 0o644, 0, 0)
+            hal_audio = (b'<AudioConfiguration>\n  <soundcard>Analog</soundcard>\n'
+                         b'  <audio-config-dir>hda-alc257</audio-config-dir>\n</AudioConfiguration>\n')
+            for fn in ('audio_default.xml', 'audio_cs42l43_cs42l43_cs35l56.xml'):
+                rel = 'etc/data/hal_configs/' + fn
+                if _exists(src_fs, rel):
+                    hm = erofs_metadata.metadata(src_fs, '/' + rel)
+                    add(rel, hal_audio, _label(hm), hm['mode'] & 0o7777, hm['uid'], hm['gid'])
+            print('Added audio config hda-alc257')
 
         # 2c4. Bare metal: root adb over TCP (no USB gadget on a laptop). Connect with `adb connect <ip>:5555`.
         # The image is a "user" build, so debuggable/unauthenticated adb has to be forced from init.
@@ -222,7 +256,7 @@ def main():
                 b'# debug: keep logs on /metadata (unencrypted, small: ~64 MB) so they survive a black screen\n'
                 b'service gbos-persist-log /system/bin/sh -c "mkdir -p /metadata/gbos-log; '
                 b'logcat -b all -v threadtime -f /metadata/gbos-log/gb-logcat.txt -r 4096 -n 3 \'*:W\' & '
-                b'(dmesg -w | grep --line-buffered -E \'amdgpu|drm|nvme|rtw|usb |wlan|snd|hda|codec|sound|reset|timeout|fault|BUG|WARN|Oops|panic|firmware|hung|lockup|thermal|ACPI Error\' | head -c 6000000 > /metadata/gbos-log/gb-kmsg.txt) & '
+                b'(dmesg -w | grep --line-buffered -E \'amdgpu|drm|nvme|rtw|usb |wlan|snd|hda|codec|sound|bluetooth|hci|btusb|btrtl|reset|timeout|fault|BUG|WARN|Oops|panic|firmware|hung|lockup|thermal|ACPI Error\' | head -c 6000000 > /metadata/gbos-log/gb-kmsg.txt) & '
                 b'while true; do getprop > /metadata/gbos-log/gb-props.txt; sleep 30; done"\n'
                 b'    class core\n'
                 b'    user root\n'
