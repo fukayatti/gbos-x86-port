@@ -22,6 +22,7 @@ before running anything there.
 | `mesa-radv/` | Build script + patch for Mesa RADV on Android x86_64 (needs the NDK and Mesa 26.2.4 with the mapper5 patch from skylartaylor/gbos-vm). |
 | `host/` | Launchers with host protection (cgroup limits, health logger), `vnc.py` headless driver. |
 | `tools/gbos_detect.py` | **Prototype**: run it on a Linux that already works on your machine; it writes a hardware profile (boot device PCI bridge, GPU/Wi-Fi/Bluetooth drivers and firmware, ALSA cards and a draft audio config for the dras HAL, kernel command line pieces). On the author's laptop it reproduces the hand-made audio config and `boot_devices` exactly. |
+| `gbos/` | **Work in progress**: `python3 -m gbos detect|kconfig|initrd`. `kconfig` maps the profile's drivers to `CONFIG_*=m` by scanning the kernel's Makefiles; `initrd` builds the initrd (modules with dependencies + firmware) from the profile. On the author's laptop the module list is identical to the hand-made one. Next: `esp`, `plan`/`install` (with safety checks) and a QEMU boot test. |
 | `docs/` | Status notes and the SIGILL investigation. |
 
 ## What is NOT here
