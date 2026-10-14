@@ -1,5 +1,5 @@
 import argparse, json, os, subprocess, sys
-from . import kconfig, initrd, esp, plan, gpt
+from . import kconfig, initrd, esp, plan, gpt, install
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -48,6 +48,14 @@ def cmd_plan(a):
     sys.exit(1 if pl['problems'] else 0)
 
 
+def cmd_install(a):
+    if a.profile:
+        c = json.load(open(a.profile)).get('cpu', {})
+        if c.get('verdict') == 'unsupported':
+            sys.exit('this CPU cannot run the image: missing ' + ', '.join(c['missing_required']))
+    install.install(a)
+
+
 def main():
     ap = argparse.ArgumentParser(prog='gbos')
     sp = ap.add_subparsers(dest='cmd', required=True)
@@ -60,6 +68,10 @@ def main():
     p = sp.add_parser('plan', help='show what installing would do; writes nothing'); p.add_argument('--image', required=True); p.add_argument('--disk', required=True)
     p.add_argument('--region', required=True, help='START:END sectors (inclusive) that may be overwritten'); p.add_argument('--erase', type=int, nargs='*', help='partition numbers inside the region to erase')
     p.add_argument('--profile', help='profile.json (refuses when the CPU cannot run the image)'); p.add_argument('--allow-system-disk', action='store_true'); p.add_argument('--json'); p.set_defaults(f=cmd_plan)
+    p = sp.add_parser('install', help='WRITES to the disk (see --dry-run)'); p.add_argument('--image', required=True); p.add_argument('--esp', required=True, help='esp image from `gbos esp`')
+    p.add_argument('--disk', required=True); p.add_argument('--region', required=True); p.add_argument('--erase', type=int, nargs='*'); p.add_argument('--profile')
+    p.add_argument('--allow-system-disk', action='store_true'); p.add_argument('--allow-file', action='store_true'); p.add_argument('--dry-run', action='store_true')
+    p.add_argument('--confirm', help='the confirmation string, for non-interactive use'); p.add_argument('--backup'); p.add_argument('--boot-entry', action='store_true'); p.set_defaults(f=cmd_install)
     a = ap.parse_args()
     a.f(a)
 

@@ -8,7 +8,7 @@ Safety rules, in order of importance:
   * Refuses when a partition to be erased is mounted, or when the region is too small, or when the disk is the one the
     running system boots from and --allow-system-disk was not given.
 """
-import json, os, re, subprocess
+import json, os, re, stat, subprocess
 from . import gpt
 
 ESP_SECTORS = 512 * 2048  # 512 MiB
@@ -21,7 +21,19 @@ def lsblk(disk):
     return json.loads(out)['blockdevices'][0].get('children', [])
 
 
+def file_partitions(path):
+    """Partitions of a disk *image file* (test harness) via `sgdisk -p`."""
+    out = subprocess.run(['sgdisk', '-p', path], capture_output=True, text=True).stdout
+    parts = []
+    for m in re.finditer(r'^\s*(\d+)\s+(\d+)\s+(\d+)\s+\S+ \S+\s+\S+\s*(\S*)', out, re.M):
+        n, s, e = int(m[1]), int(m[2]), int(m[3])
+        parts.append({'num': n, 'path': f'{path}#{n}', 'start': s, 'last': e, 'sectors': e - s + 1, 'label': m[4] or None, 'fstype': None, 'mounts': []})
+    return sorted(parts, key=lambda p: p['start'])
+
+
 def disk_partitions(disk):
+    if not stat.S_ISBLK(os.stat(disk).st_mode):
+        return file_partitions(disk)
     base = os.path.basename(disk)
     parts = []
     for c in lsblk(disk):
@@ -38,6 +50,8 @@ def disk_partitions(disk):
 
 
 def is_system_disk(disk):
+    if not stat.S_ISBLK(os.stat(disk).st_mode):
+        return False
     src = ''
     for line in open('/proc/mounts'):
         f = line.split()
