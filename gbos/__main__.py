@@ -34,6 +34,12 @@ def cmd_esp(a):
 
 
 def cmd_plan(a):
+    if a.profile:
+        c = json.load(open(a.profile)).get('cpu', {})
+        if c.get('verdict') == 'unsupported':
+            sys.exit('this CPU cannot run the image: missing ' + ', '.join(c['missing_required']))
+        if c.get('verdict') == 'emulated':
+            print('note: CPU lacks', ', '.join(c['to_emulate']), '-> gfni_emu.ko (instruction emulation) will be used')
     rs, re_ = (int(x) for x in a.region.split(':'))
     pl = plan.make_plan(a.image, a.disk, (rs, re_), set(a.erase or []), a.allow_system_disk)
     plan.show(pl)
@@ -53,7 +59,7 @@ def main():
     p.add_argument('--initrd', required=True); p.add_argument('--out', required=True); p.add_argument('--esp-mb', type=int, default=500); p.add_argument('--extra'); p.set_defaults(f=cmd_esp)
     p = sp.add_parser('plan', help='show what installing would do; writes nothing'); p.add_argument('--image', required=True); p.add_argument('--disk', required=True)
     p.add_argument('--region', required=True, help='START:END sectors (inclusive) that may be overwritten'); p.add_argument('--erase', type=int, nargs='*', help='partition numbers inside the region to erase')
-    p.add_argument('--allow-system-disk', action='store_true'); p.add_argument('--json'); p.set_defaults(f=cmd_plan)
+    p.add_argument('--profile', help='profile.json (refuses when the CPU cannot run the image)'); p.add_argument('--allow-system-disk', action='store_true'); p.add_argument('--json'); p.set_defaults(f=cmd_plan)
     a = ap.parse_args()
     a.f(a)
 

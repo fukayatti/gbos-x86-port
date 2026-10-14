@@ -32,6 +32,28 @@ def dmi():
     return {k: rd(f'/sys/class/dmi/id/{k}') for k in keys}
 
 
+# ---------------------------------------------------------------- CPU
+# The Googlebook userland is built for a recent Intel core. Verdicts:
+#   native      every feature it uses exists
+#   emulated    only GFNI / VAES / VPCLMULQDQ / AVX-VNNI are missing: module/gfni_emu.c traps #UD and emulates them (cfi=norand)
+#   unsupported something the module cannot emulate is missing (AVX2, BMI2, FMA, ...): this CPU cannot run the image
+EMULATED = {'gfni': 'GFNI', 'vaes': 'VAES', 'vpclmulqdq': 'VPCLMULQDQ', 'avx_vnni': 'AVX-VNNI'}
+REQUIRED = {'avx2': 'AVX2', 'bmi1': 'BMI1', 'bmi2': 'BMI2', 'fma': 'FMA', 'movbe': 'MOVBE', 'f16c': 'F16C', 'abm': 'LZCNT/POPCNT', 'sse4_2': 'SSE4.2'}
+
+
+def cpu():
+    flags = set()
+    for line in rd('/proc/cpuinfo').splitlines():
+        if line.startswith('flags'):
+            flags = set(line.split(':', 1)[1].split())
+            break
+    model = next((l.split(':', 1)[1].strip() for l in rd('/proc/cpuinfo').splitlines() if l.startswith('model name')), '')
+    lacking = [v for k, v in REQUIRED.items() if k not in flags and not (k == 'abm' and 'lzcnt' in flags)]
+    emulate = [v for k, v in EMULATED.items() if k not in flags]
+    verdict = 'unsupported' if lacking else ('emulated' if emulate else 'native')
+    return {'model': model, 'verdict': verdict, 'missing_required': lacking, 'to_emulate': emulate}
+
+
 # ---------------------------------------------------------------- boot device
 def boot_devices(disk):
     """androidboot.boot_devices must be the PCI *bridge* above the storage controller (see docs/TROUBLESHOOTING.md)."""
@@ -191,7 +213,7 @@ def main():
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
 
-    prof = {'dmi': dmi(), 'boot': boot_devices(a.disk), 'pci': pci_devices(), 'usb': usb_devices(), 'alsa': alsa_cards()}
+    prof = {'cpu': cpu(), 'dmi': dmi(), 'boot': boot_devices(a.disk), 'pci': pci_devices(), 'usb': usb_devices(), 'alsa': alsa_cards()}
 
     def pick(pred):
         return [d for d in prof['pci'] if pred(d)]
@@ -229,6 +251,8 @@ def main():
     open(f'{a.out}/cmdline.txt', 'w').write(' '.join(cmd) + '\n')
     json.dump(prof, open(f'{a.out}/profile.json', 'w'), indent=2, ensure_ascii=False)
     print(f"{prof['dmi']['sys_vendor']} {prof['dmi']['product_name']} -> {a.out}/")
+    c = prof['cpu']
+    print(' cpu          :', c['model'], '->', c['verdict'].upper(), ('(emulate: ' + ', '.join(c['to_emulate']) + ')') if c['to_emulate'] else '', ('MISSING: ' + ', '.join(c['missing_required'])) if c['missing_required'] else '')
     print(' boot_devices :', prof['boot']['bridge'])
     print(' gpu          :', [(g['driver'], g['name']) for g in prof['gpu']])
     print(' wifi         :', [(w['driver'], w['name']) for w in prof['wifi']])
