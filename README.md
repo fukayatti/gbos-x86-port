@@ -21,6 +21,7 @@ before running anything there.
 | `bm/` | `make_baremetal_initrd.sh` (adds amdgpu, rtw88, firmware), `build_esp.sh` (GRUB ESP), `test_uefi_usb.sh` (QEMU test of the boot path), `flash_usb.sh` (**destructive**, USB disks only), `install_nvme_p3.sh` / `rewrite_images.sh` / `write_esp.sh` (**destructive**, written for one specific laptop's partition layout; read and adapt), `get_logs.sh` (reads logcat that `gbos-persist-log` keeps on /metadata), `fix_boot.sh`. |
 | `mesa-radv/` | Build script + patch for Mesa RADV on Android x86_64 (needs the NDK and Mesa 26.2.4 with the mapper5 patch from skylartaylor/gbos-vm). |
 | `host/` | Launchers with host protection (cgroup limits, health logger), `vnc.py` headless driver. |
+| `tools/gbos_detect.py` | **Prototype**: run it on a Linux that already works on your machine; it writes a hardware profile (boot device PCI bridge, GPU/Wi-Fi/Bluetooth drivers and firmware, ALSA cards and a draft audio config for the dras HAL, kernel command line pieces). On the author's laptop it reproduces the hand-made audio config and `boot_devices` exactly. |
 | `docs/` | Status notes and the SIGILL investigation. |
 
 ## What is NOT here
